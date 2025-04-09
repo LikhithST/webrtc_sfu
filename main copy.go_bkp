@@ -1,0 +1,147 @@
+// SPDX-FileCopyrightText: 2023 The Pion community <https://pion.ly>
+// SPDX-License-Identifier: MIT
+
+//go:build !js
+// +build !js
+
+package main
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"net/http"
+	"strconv"
+
+	"github.com/pion/interceptor"
+	"github.com/pion/interceptor/pkg/intervalpli"
+	"github.com/pion/webrtc/v4"
+)
+
+func main() {
+	port := flag.Int("port", 8080, "http server port")
+	flag.Parse()
+
+	http.HandleFunc("/offer", handleOffer)
+	fmt.Printf("Server started at :%d\n", *port)
+	panic(http.ListenAndServe(":"+strconv.Itoa(*port), nil))
+}
+
+func handleOffer(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	// Handle preflight request
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	offer := webrtc.SessionDescription{}
+
+	// fmt.Printf("\n offer: %v", string(body))
+	decode(string(body), &offer)
+
+	// fmt.Printf("\n %#v", offer)
+
+	peerConnectionConfig := webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{
+			{URLs: []string{"stun:stun.l.google.com:19302"}},
+			{URLs: []string{"turn:global.relay.metered.ca:80"}, Username: "e7c2418ad54a28c683cde02e", Credential: "ui+6iGFVbG7OlBIP"},
+		},
+	}
+
+	mediaEngine := &webrtc.MediaEngine{}
+	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
+		http.Error(w, "Failed to register codecs", http.StatusInternalServerError)
+		return
+	}
+
+	interceptorRegistry := &interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, interceptorRegistry); err != nil {
+		http.Error(w, "Failed to register interceptors", http.StatusInternalServerError)
+		return
+	}
+
+	intervalPliFactory, err := intervalpli.NewReceiverInterceptor()
+	if err != nil {
+		http.Error(w, "Failed to create interval PLI factory", http.StatusInternalServerError)
+		return
+	}
+	interceptorRegistry.Add(intervalPliFactory)
+
+	peerConnection, err := webrtc.NewAPI(
+		webrtc.WithMediaEngine(mediaEngine),
+		webrtc.WithInterceptorRegistry(interceptorRegistry),
+	).NewPeerConnection(peerConnectionConfig)
+	if err != nil {
+		http.Error(w, "Failed to create PeerConnection", http.StatusInternalServerError)
+		return
+	}
+	defer peerConnection.Close()
+
+	if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo); err != nil {
+		http.Error(w, "Failed to add transceiver", http.StatusInternalServerError)
+		return
+	}
+
+	err = peerConnection.SetRemoteDescription(offer)
+	if err != nil {
+		http.Error(w, "Failed to set remote description", http.StatusInternalServerError)
+		return
+	}
+
+	answer, err := peerConnection.CreateAnswer(nil)
+	if err != nil {
+		http.Error(w, "Failed to create answer", http.StatusInternalServerError)
+		return
+	}
+
+	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
+
+	err = peerConnection.SetLocalDescription(answer)
+	if err != nil {
+		http.Error(w, "Failed to set local description", http.StatusInternalServerError)
+		return
+	}
+
+	<-gatherComplete
+
+	encodedAnswer := encode(peerConnection.LocalDescription())
+	fmt.Println("respone: \n %+v", encodedAnswer)
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(encodedAnswer))
+}
+
+func encode(obj *webrtc.SessionDescription) string {
+	b, err := json.Marshal(obj)
+	if err != nil {
+		panic(err)
+	}
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+func decode(in string, obj *webrtc.SessionDescription) {
+	b, err := base64.StdEncoding.DecodeString(in)
+	if err != nil {
+		panic(err)
+	}
+	if err = json.Unmarshal(b, obj); err != nil {
+		panic(err)
+	}
+}
