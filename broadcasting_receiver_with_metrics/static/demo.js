@@ -8,15 +8,15 @@ const log = msg => {
   }
   
   window.createSession = isPublisher => {
-    // const pc = new RTCPeerConnection({
-    //   iceServers: [
-    //     {
-    //       urls: 'stun:stun.l.google.com:19302'
-    //     },
-    //     {urls:"turn:global.relay.metered.ca:80",username:"e7c2418ad54a28c683cde02e",credential:"ui+6iGFVbG7OlBIP"}
-    //   ]
-    // })
-    const pc = new RTCPeerConnection({})
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        {
+          urls: 'stun:stun.l.google.com:19302'
+        },
+        {urls:"turn:global.relay.metered.ca:80",username:"e7c2418ad54a28c683cde02e",credential:"ui+6iGFVbG7OlBIP"}
+      ]
+    })
+    // const pc = new RTCPeerConnection({})
     pc.oniceconnectionstatechange = e => log(pc.iceConnectionState)
     pc.onicecandidate = event => {
       if (event.candidate === null) {
@@ -38,6 +38,23 @@ const log = msg => {
       .catch(error => console.error('Error:', error));
       }
     }
+
+    let sendChannel = pc.createDataChannel('Joystick-signal')
+    sendChannel.onclose = () => console.log('sendChannel has closed')
+    sendChannel.onopen = () => {
+    console.log('sendChannel has opened');
+
+  // Setup listeners only once the channel is open
+  document.querySelectorAll('.button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (sendChannel.readyState === 'open') {
+        sendChannel.send(`Button ${btn.id} pressed`);
+        console.log(`Button ${btn.id} pressed`);
+      }
+    });
+  });
+};
+sendChannel.onmessage = e => log(`Message from DataChannel '${sendChannel.label}' payload '${String(e.data)}'`)
   
     if (isPublisher) {
       navigator.mediaDevices.getUserMedia({ video: true, audio: false })
@@ -101,3 +118,5 @@ const log = msg => {
   
     document.getElementById('signalingContainer').style = 'display: block'
   }
+
+

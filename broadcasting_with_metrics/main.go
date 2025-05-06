@@ -165,6 +165,7 @@ func main() {
 		panic(err)
 	}
 	interceptorRegistry.Add(intervalPliFactory)
+	messageChannel := make(chan []byte)
 
 	statsInterceptorFactory, err := stats.NewInterceptor()
 	if err != nil {
@@ -217,11 +218,11 @@ func main() {
 			for {
 				stats := statsGetter.Get(uint32(remoteTrack.SSRC()))
 
-				fmt.Printf("Stats for: %s\n", remoteTrack.Codec().MimeType)
-				fmt.Println(stats.InboundRTPStreamStats)
-				fmt.Println(stats.RemoteOutboundRTPStreamStats)
-				fmt.Println(stats.OutboundRTPStreamStats)
-				fmt.Println(stats.RemoteInboundRTPStreamStats)
+				// fmt.Printf("Stats for: %s\n", remoteTrack.Codec().MimeType)
+				// fmt.Println(stats.InboundRTPStreamStats)
+				// fmt.Println(stats.RemoteOutboundRTPStreamStats)
+				// fmt.Println(stats.OutboundRTPStreamStats)
+				// fmt.Println(stats.RemoteInboundRTPStreamStats)
 				// fmt.Println("-----", stats.InboundRTPStreamStats.PacketsReceived, "-----")
 				webrtcStats.PacketsReceived.WithLabelValues("PacketsReceived").Add(float64(stats.InboundRTPStreamStats.PacketsReceived))
 				webrtcStats.PacketsLost.WithLabelValues("PacketsLost").Add(float64(stats.InboundRTPStreamStats.PacketsLost))
@@ -271,6 +272,29 @@ func main() {
 		panic(err)
 	}
 
+	peerConnection.OnDataChannel(func(dataChannel *webrtc.DataChannel) {
+		fmt.Printf("New DataChannel %s %d\n", dataChannel.Label(), dataChannel.ID())
+
+		// Register channel opening handling
+		dataChannel.OnOpen(func() {
+			fmt.Printf(
+				"Data channel '%s'-'%d' open. Random messages will now be sent to any connected DataChannels every 5 seconds\n",
+				dataChannel.Label(), dataChannel.ID(),
+			)
+		})
+
+		// Register text message handling
+		dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+			fmt.Printf("Message from DataChannel '%s': '%s'\n", dataChannel.Label(), string(msg.Data))
+		})
+
+		go func() {
+			for {
+				dataChannel.Send(<-messageChannel)
+			}
+		}()
+	})
+
 	// Block until ICE Gathering is complete, disabling trickle ICE
 	// we do this because we only can exchange one signaling message
 	// in a production application you should exchange ICE Candidates via OnICECandidate
@@ -315,6 +339,25 @@ func main() {
 				}
 			}
 		}()
+
+		peerConnection.OnDataChannel(func(dataChannel *webrtc.DataChannel) {
+			fmt.Printf("New DataChannel %s %d\n", dataChannel.Label(), dataChannel.ID())
+
+			// Register channel opening handling
+			dataChannel.OnOpen(func() {
+				fmt.Printf(
+					"Data channel '%s'-'%d' open. Random messages will now be sent to any connected DataChannels every 5 seconds\n",
+					dataChannel.Label(), dataChannel.ID(),
+				)
+			})
+
+			// Register text message handling
+			dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+				fmt.Printf("Message from DataChannel '%s': '%s'\n", dataChannel.Label(), string(msg.Data))
+				messageChannel <- msg.Data
+
+			})
+		})
 
 		// Set the remote SessionDescription
 		err = peerConnection.SetRemoteDescription(recvOnlyOffer)

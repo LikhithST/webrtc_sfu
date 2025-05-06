@@ -13,11 +13,23 @@ const log = msg => {
     //     {
     //       urls: 'stun:stun.l.google.com:19302'
     //     },
-    //     {urls:"turn:global.relay.metered.ca:80",username:"e7c2418ad54a28c683cde02e",credential:"ui+6iGFVbG7OlBIP"}
+    //     // {urls:"turn:global.relay.metered.ca:80",username:"e7c2418ad54a28c683cde02e",credential:"ui+6iGFVbG7OlBIP"}
     //   ]
     // })
     const pc = new RTCPeerConnection({})
 
+    let sendChannel = pc.createDataChannel('Joystick-signal-reciever2')
+    sendChannel.onclose = () => console.log('sendChannel has closed')
+    sendChannel.onopen = () => console.log('sendChannel has opened')
+    sendChannel.onmessage = e => {
+      console.log(`Message from DataChannel '${sendChannel}' payload '${e}'`);
+      const decoder = new TextDecoder("utf-8");
+const text = decoder.decode(e.data);
+
+console.log(text); // e.g., "Button up pressed"
+
+      log(`Message from DataChannel '${sendChannel.label}' payload '${text}'`)
+}
     pc.oniceconnectionstatechange = e => log(pc.iceConnectionState)
     pc.onicecandidate = event => {
       if (event.candidate === null) {
@@ -39,6 +51,8 @@ const log = msg => {
       .catch(error => console.error('Error:', error));
       }
     }
+
+
   
     if (isPublisher) {
       navigator.mediaDevices.getUserMedia({ video: true, audio: false })

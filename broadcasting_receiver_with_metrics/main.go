@@ -152,6 +152,7 @@ func main() {
 	// for each PeerConnection.
 	interceptorRegistry := &interceptor.Registry{}
 
+	messageChannel := make(chan []byte)
 	// Use the default set of Interceptors
 	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, interceptorRegistry); err != nil {
 		panic(err)
@@ -234,8 +235,8 @@ func main() {
 				stats := statsGetter.Get(uint32(remoteTrack.SSRC()))
 
 				// fmt.Printf("Stats for: %s\n", remoteTrack.Codec().MimeType)
-				fmt.Println(stats.InboundRTPStreamStats)
-				fmt.Println(stats.RemoteOutboundRTPStreamStats)
+				// fmt.Println(stats.InboundRTPStreamStats)
+				// fmt.Println(stats.RemoteOutboundRTPStreamStats)
 
 				// fmt.Println("-----", stats.InboundRTPStreamStats.PacketsReceived, "-----")
 				webrtcStats.PacketsReceived.WithLabelValues("PacketsReceived").Add(float64(stats.InboundRTPStreamStats.PacketsReceived))
@@ -282,6 +283,32 @@ func main() {
 		}
 	})
 
+	Ordered := true
+	sendChannel, err := peerConnection.CreateDataChannel("Joystick-signal-reciever", &webrtc.DataChannelInit{Ordered: &Ordered})
+
+	if err != nil {
+		return
+	}
+
+	sendChannel.OnClose(func() {
+		fmt.Println("Channel closed")
+	})
+
+	sendChannel.OnOpen(func() {
+		fmt.Println("Data channel opened")
+	})
+
+	sendChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+		fmt.Printf(" msg recieved: %s \n", msg.Data)
+	})
+
+	go func() {
+		for {
+			sendChannel.Send(<-messageChannel)
+
+		}
+	}()
+
 	// Wait for the offer to be pasted
 	offer, err := peerConnection.CreateOffer(nil)
 	if err != nil {
@@ -316,6 +343,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	// ---------------------------------------------------------------------------------------------------------------------------------
 
 	// Set the remote SessionDescription
@@ -356,7 +384,6 @@ func main() {
 	for {
 		fmt.Println("")
 		fmt.Println("Curl an base64 SDP to start sendonly peer connection")
-
 		recvOnlyOffer := webrtc.SessionDescription{}
 		decode(<-sdpChan, &recvOnlyOffer)
 
@@ -383,6 +410,24 @@ func main() {
 				}
 			}
 		}()
+
+		peerConnection.OnDataChannel(func(dataChannel *webrtc.DataChannel) {
+			fmt.Printf("New DataChannel %s %d\n", dataChannel.Label(), dataChannel.ID())
+
+			// Register channel opening handling
+			dataChannel.OnOpen(func() {
+				fmt.Printf(
+					"Data channel '%s'-'%d' open. Random messages will now be sent to any connected DataChannels every 5 seconds\n",
+					dataChannel.Label(), dataChannel.ID(),
+				)
+			})
+
+			// Register text message handling
+			dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+				fmt.Printf("Message from DataChannel '%s': '%s'\n", dataChannel.Label(), string(msg.Data))
+				messageChannel <- msg.Data
+			})
+		})
 
 		// Set the remote SessionDescription
 		err = peerConnection.SetRemoteDescription(recvOnlyOffer)

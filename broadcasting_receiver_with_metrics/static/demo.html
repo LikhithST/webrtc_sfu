@@ -12,32 +12,56 @@
 <link rel="stylesheet" href="demo.css">    
 </head>
 <body>
-    <div id="signalingContainer" style="display: none">
-        Browser base64 Session Description<br />
-        <textarea id="localSessionDescription" readonly="true"></textarea> <br />
-        <button onclick="window.copySDP()">
-          Copy browser SDP to clipboard
-        </button>
-        <br />
-        <br />
-      
-        Golang base64 Session Description<br />
-        <textarea id="remoteSessionDescription"></textarea> <br/>
-        <button onclick="window.startSession()"> Start Session </button><br />
+  <div class="container">
+  <div class="webrtc">
+
+    Video<br />
+    <video id="video1" width="160" height="120" autoplay muted></video> <br />
+    
+    <button class="createSessionButton" onclick="window.createSession(true)"> Publish a Broadcast </button>
+    <button class="createSessionButton" onclick="window.createSession(false)"> Join a Broadcast </button><br />
+    
+    <br />
+    
+    Logs<br />
+    <div id="logs"></div>
+
+
+    
+    <br />
+    
+    
+  </div>
+
+  <div id="signalingContainer" style="display: none">
+    Browser base64 Session Description<br />
+    <textarea id="localSessionDescription" readonly="true"></textarea> <br />
+    <button onclick="window.copySDP()">
+      Copy browser SDP to clipboard
+    </button>
+    <br />
+    <br />
+  
+    Golang base64 Session Description<br />
+    <textarea id="remoteSessionDescription"></textarea> <br/>
+    <button onclick="window.startSession()"> Start Session </button><br />
+  </div>
+    
+
+      <div class="joystick">
+        <div class="empty"></div>
+        <div class="button" id="up">↑</div>
+        <div class="empty"></div>
+    
+        <div class="button" id="left">←</div>
+        <div class="button" id="center">●</div>
+        <div class="button" id="right">→</div>
+    
+        <div class="empty"></div>
+        <div class="button" id="down">↓</div>
+        <div class="empty"></div>
       </div>
-      
-      <br />
-      
-      Video<br />
-      <video id="video1" width="160" height="120" autoplay muted></video> <br />
-      
-      <button class="createSessionButton" onclick="window.createSession(true)"> Publish a Broadcast </button>
-      <button class="createSessionButton" onclick="window.createSession(false)"> Join a Broadcast </button><br />
-      
-      <br />
-      
-      Logs<br />
-      <div id="logs"></div>
+    </div>
 </body>
 <script src="./demo.js"></script>
 </html>
