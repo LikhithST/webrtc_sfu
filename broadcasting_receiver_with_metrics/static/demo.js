@@ -13,7 +13,7 @@ const log = msg => {
         {
           urls: 'stun:stun.l.google.com:19302'
         },
-        {urls:"turn:global.relay.metered.ca:80",username:"e7c2418ad54a28c683cde02e",credential:"ui+6iGFVbG7OlBIP"}
+        // {urls:"turn:global.relay.metered.ca:80",username:"e7c2418ad54a28c683cde02e",credential:"ui+6iGFVbG7OlBIP"}
       ]
     })
     // const pc = new RTCPeerConnection({})
@@ -23,7 +23,7 @@ const log = msg => {
         document.getElementById('localSessionDescription').value = btoa(JSON.stringify(pc.localDescription))
         console.log(pc.localDescription);
 
-        fetch('http://localhost:8082/offer', {
+        fetch('https://webrtc2.hopto.org:8082/offer', {
           method: 'POST',
           headers: { 'Content-Type': 'application/text' },
           body: btoa(JSON.stringify(pc.localDescription))
@@ -44,11 +44,28 @@ const log = msg => {
     sendChannel.onopen = () => {
     console.log('sendChannel has opened');
     let frameId = 0;
-  setInterval(() => {
-    const timestamp = Date.now();
-    sendChannel.send(JSON.stringify({ frameId, timestamp }));
-    frameId++;
-  }, 10); // Simulate 100fps video stream
+
+    setInterval(() => {
+      const timestamp = Date.now();
+      const payloadSize = 1200; // Simulated payload size (~MTU limit)
+      const buffer = new ArrayBuffer(payloadSize);
+      const view = new DataView(buffer);
+    
+      // Encode frameId (4 bytes)
+      view.setUint32(0, frameId);
+    
+      // Encode timestamp (8 bytes)
+      view.setBigUint64(4, BigInt(timestamp));
+    
+      // Fill the rest with dummy data to simulate video content
+      const bodyView = new Uint8Array(buffer, 12);
+      for (let i = 0; i < bodyView.length; i++) {
+        bodyView[i] = Math.floor(Math.random() * 256); // Random byte data
+      }
+    
+      sendChannel.send(buffer); // Binary send
+      frameId++;
+    }, 33); // ~100 fps
 
   // Setup listeners only once the channel is open
   document.querySelectorAll('.button').forEach(btn => {

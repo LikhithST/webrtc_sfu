@@ -138,6 +138,7 @@ func main() {
 			{
 				URLs: []string{"stun:stun.l.google.com:19302"},
 			},
+			//  {URLs:[]string{"turn:global.relay.metered.ca:80"},Username:"e7c2418ad54a28c683cde02e",Credential:"ui+6iGFVbG7OlBIP"},
 		},
 	}
 
@@ -252,7 +253,7 @@ func main() {
 			}
 		}()
 
-		rtpBuf := make([]byte, 1400)
+		rtpBuf := make([]byte, 4200)
 		for {
 			i, _, readErr := remoteTrack.Read(rtpBuf)
 			if readErr != nil {
@@ -275,11 +276,27 @@ func main() {
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("Connection State has changed %s \n", connectionState.String())
 		iceConnectionState.Store(connectionState)
+		if connectionState.String() == "connected" {
+			stats := peerConnection.GetStats()
+
+			for _, stat := range stats {
+				switch s := stat.(type) {
+				case webrtc.ICECandidatePairStats:
+					if s.State == "succeeded" && s.Nominated {
+						fmt.Println("Selected ICE Candidate Pair:")
+						fmt.Printf("  Local:  %s (ID: %s)\n", s.LocalCandidateID, s.ID)
+						fmt.Printf("  Remote: %s\n", s.RemoteCandidateID)
+					}
+				case webrtc.ICECandidateStats:
+					fmt.Printf("ICE Candidate: %s, Type: %s, IP: %s\n", s.ID, s.CandidateType, s.IP)
+				}
+			}
+		}
 	})
 
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate != nil {
-			fmt.Println("Discovered ICE Candidate:", candidate.Address)
+			fmt.Println("Discovered ICE Candidate:", candidate.Address, candidate.Typ)
 		}
 	})
 
@@ -313,6 +330,8 @@ func main() {
 	offer, err := peerConnection.CreateOffer(nil)
 	if err != nil {
 		panic(err)
+	} else {
+		fmt.Println("offer created")
 	}
 
 	// Sets the LocalDescription, and starts our UDP listeners
@@ -322,8 +341,9 @@ func main() {
 	}
 
 	localdescription := encode(peerConnection.LocalDescription())
+	fmt.Println("encoded local desc")
 
-	resp, err := http.Post("http://localhost:8080/offer", "text/plain", bytes.NewBuffer([]byte(localdescription)))
+	resp, err := http.Post("https://webrtc.hopto.org:8080/offer", "text/plain", bytes.NewBuffer([]byte(localdescription)))
 	if err != nil {
 		panic(err)
 	}
@@ -333,6 +353,8 @@ func main() {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		panic(err)
+	} else {
+		fmt.Println("got answer")
 	}
 
 	answer := webrtc.SessionDescription{}
@@ -342,6 +364,8 @@ func main() {
 	err = peerConnection.SetRemoteDescription(answer)
 	if err != nil {
 		panic(err)
+	} else {
+		fmt.Println("set remote description")
 	}
 
 	// ---------------------------------------------------------------------------------------------------------------------------------
@@ -526,7 +550,7 @@ func httpSDPServer(port int, ch chan string) chan string {
 
 	go func() {
 		// nolint: gosec
-		panic(http.ListenAndServe(":"+strconv.Itoa(port), mux_s1))
+		panic(http.ListenAndServeTLS(":"+strconv.Itoa(port), "./cert/fullchain.pem", "./cert/privkey.pem", mux_s1))
 	}()
 
 	return sdpChan
@@ -539,6 +563,6 @@ func httpStaticServer(port int) {
 
 	go func() {
 		// nolint: gosec
-		panic(http.ListenAndServe(":"+strconv.Itoa(port), mux_s2))
+		panic(http.ListenAndServeTLS(":"+strconv.Itoa(port), "./cert/fullchain.pem", "./cert/privkey.pem", mux_s2))
 	}()
 }
