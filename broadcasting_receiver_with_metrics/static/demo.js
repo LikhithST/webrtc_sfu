@@ -43,6 +43,12 @@ const log = msg => {
     sendChannel.onclose = () => console.log('sendChannel has closed')
     sendChannel.onopen = () => {
     console.log('sendChannel has opened');
+    let frameId = 0;
+  setInterval(() => {
+    const timestamp = Date.now();
+    sendChannel.send(JSON.stringify({ frameId, timestamp }));
+    frameId++;
+  }, 10); // Simulate 100fps video stream
 
   // Setup listeners only once the channel is open
   document.querySelectorAll('.button').forEach(btn => {

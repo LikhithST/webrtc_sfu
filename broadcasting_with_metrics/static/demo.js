@@ -22,11 +22,19 @@ const log = msg => {
     sendChannel.onclose = () => console.log('sendChannel has closed')
     sendChannel.onopen = () => console.log('sendChannel has opened')
     sendChannel.onmessage = e => {
+    // const data = JSON.parse(msg.data);
+    // const now = Date.now();
+    // const latency = now - data.timestamp;
+    // console.log(`Frame ${data.frameId} latency: ${latency} ms`);
+
       console.log(`Message from DataChannel '${sendChannel}' payload '${e}'`);
       const decoder = new TextDecoder("utf-8");
-const text = decoder.decode(e.data);
-
-console.log(text); // e.g., "Button up pressed"
+      const text = decoder.decode(e.data);
+      const data = JSON.parse(text);
+      const now = Date.now();
+      const latency = now - data.timestamp;
+      console.log(`Frame ${data.frameId} latency: ${latency} ms`);
+      // console.log(text, Date.now()); // e.g., "Button up pressed"
 
       log(`Message from DataChannel '${sendChannel.label}' payload '${text}'`)
 }
