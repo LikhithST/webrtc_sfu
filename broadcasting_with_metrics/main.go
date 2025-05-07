@@ -133,6 +133,7 @@ func main() {
 			{
 				URLs: []string{"stun:stun.l.google.com:19302"},
 			},
+			// {URLs: []string{"turn:global.relay.metered.ca:80"}, Username: "e7c2418ad54a28c683cde02e", Credential: "ui+6iGFVbG7OlBIP"},
 		},
 	}
 
@@ -203,6 +204,38 @@ func main() {
 	// Set a handler for when a new remote track starts, this just distributes all our packets
 	// peerConnection.GetStats()
 
+	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		if candidate != nil {
+			fmt.Println("Discovered ICE Candidate:", candidate.Address, candidate.Typ)
+		}
+	})
+
+	peerConnection.OnICEGatheringStateChange(func(state webrtc.ICEGatheringState) {
+		fmt.Println("ICE Gathering State:", state.String())
+
+		if state.String() == "connected" {
+			stats := peerConnection.GetStats()
+
+			for _, stat := range stats {
+				switch s := stat.(type) {
+				case webrtc.ICECandidatePairStats:
+					if s.State == "succeeded" && s.Nominated {
+						fmt.Println("Selected ICE Candidate Pair:")
+						fmt.Printf("  Local:  %s (ID: %s)\n", s.LocalCandidateID, s.ID)
+						fmt.Printf("  Remote: %s\n", s.RemoteCandidateID)
+					}
+				case webrtc.ICECandidateStats:
+					fmt.Printf("ICE Candidate: %s, Type: %s, IP: %s\n", s.ID, s.CandidateType, s.IP)
+				}
+			}
+		}
+
+		if state == webrtc.ICEGatheringStateComplete {
+			fmt.Println("Final SDP with candidates:\n", peerConnection.LocalDescription().SDP)
+			// Send LocalDescription to remote peer here
+		}
+	})
+
 	peerConnection.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) { //nolint: revive
 		// Create a local track, all our SFU clients will be fed via this track
 		fmt.Println("on_track")
@@ -237,7 +270,7 @@ func main() {
 			}
 		}()
 
-		rtpBuf := make([]byte, 1400)
+		rtpBuf := make([]byte, 2800)
 		for {
 			i, _, readErr := remoteTrack.Read(rtpBuf)
 			if readErr != nil {
@@ -261,6 +294,8 @@ func main() {
 	answer, err := peerConnection.CreateAnswer(nil)
 	if err != nil {
 		panic(err)
+	} else {
+		fmt.Println("answer created")
 	}
 
 	// Create channel that is blocked until ICE Gathering is complete
@@ -307,6 +342,7 @@ func main() {
 	// Get the LocalDescription and take it to base64 so we can paste in browser
 	// fmt.Println(encode(peerConnection.LocalDescription()))
 	ch <- encode(peerConnection.LocalDescription())
+	fmt.Println("encoded local desc")
 
 	localTrack := <-localTrackChan
 	for {
@@ -356,6 +392,11 @@ func main() {
 				fmt.Printf("Message from DataChannel '%s': '%s'\n", dataChannel.Label(), string(msg.Data))
 				messageChannel <- msg.Data
 
+			})
+			peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+				if candidate != nil {
+					fmt.Println("Discovered ICE Candidate:", candidate.Address, candidate.Typ)
+				}
 			})
 		})
 
@@ -432,7 +473,7 @@ func httpSDPServer(port int, ch chan string) chan string {
 		res.Header().Set("Access-Control-Allow-Origin", "*")
 		res.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 		res.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
+		res.Header().Set("X-Content-Type-Options", "nosniff")
 		// Handle preflight request
 		if req.Method == "OPTIONS" {
 			res.WriteHeader(http.StatusOK)
@@ -456,7 +497,7 @@ func httpSDPServer(port int, ch chan string) chan string {
 
 	go func() {
 		// nolint: gosec
-		panic(http.ListenAndServe(":"+strconv.Itoa(port), mux_s1))
+		panic(http.ListenAndServeTLS(":"+strconv.Itoa(port), "./cert/fullchain.pem", "./cert/privkey.pem", mux_s1))
 	}()
 
 	return sdpChan
@@ -469,6 +510,6 @@ func httpStaticServer(port int) {
 
 	go func() {
 		// nolint: gosec
-		panic(http.ListenAndServe(":"+strconv.Itoa(port), mux_s2))
+		panic(http.ListenAndServeTLS(":"+strconv.Itoa(port), "./cert/fullchain.pem", "./cert/privkey.pem", mux_s2))
 	}()
 }

@@ -8,35 +8,63 @@ const log = msg => {
   }
   
   window.createSession = isPublisher => {
-    // const pc = new RTCPeerConnection({
-    //   iceServers: [
-    //     {
-    //       urls: 'stun:stun.l.google.com:19302'
-    //     },
-    //     // {urls:"turn:global.relay.metered.ca:80",username:"e7c2418ad54a28c683cde02e",credential:"ui+6iGFVbG7OlBIP"}
-    //   ]
-    // })
-    const pc = new RTCPeerConnection({})
+     const pc = new RTCPeerConnection({
+       iceServers: [
+         {
+           urls: 'stun:stun.l.google.com:19302'
+         },
+        //  {urls:"turn:global.relay.metered.ca:80",username:"e7c2418ad54a28c683cde02e",credential:"ui+6iGFVbG7OlBIP"}
+       ]
+     })
+//    const pc = new RTCPeerConnection({})
 
     let sendChannel = pc.createDataChannel('Joystick-signal-reciever2')
     sendChannel.onclose = () => console.log('sendChannel has closed')
     sendChannel.onopen = () => console.log('sendChannel has opened')
     sendChannel.onmessage = e => {
-    // const data = JSON.parse(msg.data);
-    // const now = Date.now();
-    // const latency = now - data.timestamp;
-    // console.log(`Frame ${data.frameId} latency: ${latency} ms`);
+    // // const data = JSON.parse(msg.data);
+    // // const now = Date.now();
+    // // const latency = now - data.timestamp;
+    // // console.log(`Frame ${data.frameId} latency: ${latency} ms`);
 
-      console.log(`Message from DataChannel '${sendChannel}' payload '${e}'`);
-      const decoder = new TextDecoder("utf-8");
-      const text = decoder.decode(e.data);
-      const data = JSON.parse(text);
-      const now = Date.now();
-      const latency = now - data.timestamp;
-      console.log(`Frame ${data.frameId} latency: ${latency} ms`);
-      // console.log(text, Date.now()); // e.g., "Button up pressed"
+    //   console.log(`Message from DataChannel '${sendChannel}' payload '${e}'`);
+    //   const decoder = new TextDecoder("utf-8");
+    //   const text = decoder.decode(e.data);
+    //   const data = JSON.parse(text);
+    //   const now = Date.now();
+    //   const latency = now - data.timestamp;
+    //   console.log(`Frame ${data.frameId} latency: ${latency} ms`);
+    //   // console.log(text, Date.now()); // e.g., "Button up pressed"
 
-      log(`Message from DataChannel '${sendChannel.label}' payload '${text}'`)
+    //   log(`Message from DataChannel '${sendChannel.label}' payload '${text}'`)
+
+    const buffer = e.data;
+
+    // Make sure it's an ArrayBuffer
+    if (!(buffer instanceof ArrayBuffer)) {
+      console.warn("Received non-binary message");
+      return;
+    }
+  
+    const view = new DataView(buffer);
+  
+    // Extract frameId (4 bytes at offset 0)
+    const frameId = view.getUint32(0);
+  
+    // Extract timestamp (8 bytes at offset 4)
+    const timestamp = Number(view.getBigUint64(4));
+  
+    // Extract the simulated video payload (rest of the buffer)
+    const payload = new Uint8Array(buffer, 12); // 12-byte header
+  
+    console.log("Received frame", {
+      frameId,
+      timestamp,
+      payloadLength: payload.length,
+      latency: Date.now() - timestamp
+    });
+  
+    // You can now use the payload however you'd like (e.g., visualization, metrics)
 }
     pc.oniceconnectionstatechange = e => log(pc.iceConnectionState)
     pc.onicecandidate = event => {
@@ -44,7 +72,7 @@ const log = msg => {
         document.getElementById('localSessionDescription').value = btoa(JSON.stringify(pc.localDescription))
         console.log(pc.localDescription);
 
-        fetch('http://localhost:8080/offer', {
+        fetch('https://webrtc.hopto.org:8080/offer', {
           method: 'POST',
           headers: { 'Content-Type': 'application/text' },
           body: btoa(JSON.stringify(pc.localDescription))
